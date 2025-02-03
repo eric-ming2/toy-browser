@@ -1,17 +1,18 @@
-use crate::node::elem;
-use crate::node::text;
-use crate::node::AttrMap;
+use crate::html::elem;
+use crate::html::text;
+use crate::html::AttrMap;
 use crate::parser::Parser;
 use std::collections::HashMap;
 use std::fs;
 
-mod node;
+mod css;
+mod html;
 mod parser;
 
 fn main() -> std::io::Result<()> {
     let input = fs::read_to_string("input/input1.html")?;
     let mut parser = Parser::new(input);
-    let root = parser.parse();
+    let root = parser.parse_html();
     println!("{:?}", root);
     Ok(())
 }
@@ -19,7 +20,8 @@ fn main() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::Node;
+    use crate::css::{Color, Declaration, Rule, Selector, SimpleSelector, Stylesheet, Unit, Value};
+    use crate::html::Node;
 
     fn manually_build_test_1() -> Node {
         let mut root = elem(
@@ -214,22 +216,98 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_1() -> std::io::Result<()> {
+    fn test_parse_html_1() -> std::io::Result<()> {
         let input = fs::read_to_string("input/input1.html")?;
         let mut parser = Parser::new(input);
-        let parsed_root = parser.parse();
+        let parsed_root = parser.parse_html();
         let manual_root = manually_build_test_1();
         assert_eq!(parsed_root, manual_root);
         Ok(())
     }
 
     #[test]
-    fn test_parse_2() -> std::io::Result<()> {
+    fn test_parse_html_2() -> std::io::Result<()> {
         let input = fs::read_to_string("input/input2.html")?;
         let mut parser = Parser::new(input);
-        let parsed_root = parser.parse();
+        let parsed_root = parser.parse_html();
         let manual_root = manually_build_test_2();
         assert_eq!(parsed_root, manual_root);
+        Ok(())
+    }
+
+    fn manually_build_test_3() -> Stylesheet {
+        Stylesheet {
+            rules: vec![
+                Rule {
+                    selectors: vec![
+                        Selector::Simple(SimpleSelector {
+                            tag_name: Some("h1".to_string()),
+                            id: None,
+                            class: vec![],
+                        }),
+                        Selector::Simple(SimpleSelector {
+                            tag_name: Some("h2".to_string()),
+                            id: None,
+                            class: vec![],
+                        }),
+                        Selector::Simple(SimpleSelector {
+                            tag_name: Some("h3".to_string()),
+                            id: None,
+                            class: vec![],
+                        }),
+                    ],
+                    declarations: vec![
+                        Declaration {
+                            name: "margin".to_string(),
+                            value: Value::Keyword("auto".to_string()),
+                        },
+                        Declaration {
+                            name: "color".to_string(),
+                            value: Value::ColorValue(
+                                Color::try_from("#cc0000".to_string()).unwrap(),
+                            ),
+                        },
+                    ],
+                },
+                Rule {
+                    selectors: vec![Selector::Simple(SimpleSelector {
+                        tag_name: Some("div".to_string()),
+                        id: None,
+                        class: vec!["note".to_string()],
+                    })],
+                    declarations: vec![
+                        Declaration {
+                            name: "margin-bottom".to_string(),
+                            value: Value::Length(20f32, Unit::Px),
+                        },
+                        Declaration {
+                            name: "padding".to_string(),
+                            value: Value::Length(10f32, Unit::Px),
+                        },
+                    ],
+                },
+                Rule {
+                    selectors: vec![Selector::Simple(SimpleSelector {
+                        tag_name: None,
+                        id: Some("answer".to_string()),
+                        class: Vec::new(),
+                    })],
+                    declarations: vec![Declaration {
+                        name: "display".to_string(),
+                        value: Value::Keyword("none".to_string()),
+                    }],
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn test_parse_css_1() -> std::io::Result<()> {
+        let input = fs::read_to_string("input/input3.css")?;
+        let mut parser = Parser::new(input);
+        let parsed_stylesheet = parser.parse_css();
+        let manual_stylesheet = manually_build_test_3();
+        assert_eq!(parsed_stylesheet, manual_stylesheet);
         Ok(())
     }
 }

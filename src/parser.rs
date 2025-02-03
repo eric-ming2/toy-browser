@@ -1,4 +1,5 @@
-use crate::node::{elem, text, AttrMap, Node};
+use crate::css::{Color, Declaration, Rule, Selector, SimpleSelector, Stylesheet, Unit, Value};
+use crate::html::{elem, text, AttrMap, Node};
 use std::collections::HashMap;
 
 pub struct Parser {
@@ -155,7 +156,7 @@ impl Parser {
     }
 
     // Parse an HTML document and return the root element.
-    pub(crate) fn parse(&mut self) -> Node {
+    pub(crate) fn parse_html(&mut self) -> Node {
         let mut nodes = self.parse_nodes();
 
         // If the document contains a root element, just return it. Otherwise, create one.
@@ -170,5 +171,122 @@ impl Parser {
                 nodes,
             )
         }
+    }
+
+    // Parse one simple selector, e.g.: `type#id.class1.class2.class3`
+    fn parse_simple_selector(&mut self) -> SimpleSelector {
+        let mut selector = SimpleSelector {
+            tag_name: None,
+            id: None,
+            class: Vec::new(),
+        };
+        while !self.eof() {
+            match self.next_char() {
+                '#' => {
+                    self.consume_char();
+                    selector.id = Some(self.parse_identifier());
+                }
+                '.' => {
+                    self.consume_char();
+                    selector.class.push(self.parse_identifier());
+                }
+                '*' => {
+                    // universal selector
+                    self.consume_char();
+                }
+                c if matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_') => {
+                    selector.tag_name = Some(self.parse_identifier());
+                }
+                _ => break,
+            }
+        }
+        selector
+    }
+
+    fn parse_identifier(&mut self) -> String {
+        // TODO: Include U+00A0 and higher.
+        self.consume_while(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_'))
+    }
+
+    // Parse a rule set: `<selectors> { <declarations> }`.
+    fn parse_rule(&mut self) -> Rule {
+        Rule {
+            selectors: self.parse_selectors(),
+            declarations: self.parse_declarations(),
+        }
+    }
+
+    // Parse a comma-separated list of selectors.
+    fn parse_selectors(&mut self) -> Vec<Selector> {
+        let mut selectors = Vec::new();
+        loop {
+            selectors.push(Selector::Simple(self.parse_simple_selector()));
+            self.consume_whitespace();
+            match self.next_char() {
+                ',' => {
+                    self.consume_char();
+                    self.consume_whitespace();
+                }
+                '{' => break, // start of declarations
+                c => panic!("Unexpected character {} in selector list", c),
+            }
+        }
+        // Return selectors with highest specificity first, for use in matching.
+        selectors.sort_by(|a, b| b.specificity().cmp(&a.specificity()));
+        selectors
+    }
+
+    fn parse_declarations(&mut self) -> Vec<Declaration> {
+        let mut declarations = Vec::new();
+        self.expect("{");
+        self.consume_whitespace();
+        while self.next_char() != '}' {
+            declarations.push(self.parse_declaration());
+            self.consume_whitespace();
+        }
+        self.expect("}");
+        self.consume_whitespace();
+        declarations
+    }
+
+    fn parse_declaration(&mut self) -> Declaration {
+        let name = self.consume_while(|c| c != ':');
+        self.expect(":");
+        self.consume_whitespace();
+        let value;
+        if self.next_char() == '#' {
+            value = Value::ColorValue(
+                Color::try_from(self.consume_while(|c| c != ';')).expect("Failed to parse color"),
+            );
+        } else if matches!(self.next_char(), '0'..='9') {
+            value = self.parse_length_value();
+        } else {
+            value = Value::Keyword(self.consume_while(|c| c != ';'))
+        }
+        self.expect(";");
+        Declaration { name, value }
+    }
+
+    fn parse_length_value(&mut self) -> Value {
+        let num = self
+            .consume_while(|c| matches!(c, '0'..='9' | '.'))
+            .parse::<f32>()
+            .expect("Failed to parse length value");
+        let unit = self.parse_length_unit();
+        Value::Length(num, unit)
+    }
+
+    fn parse_length_unit(&mut self) -> Unit {
+        // This is the only unit we support right now
+        self.expect("px");
+        Unit::Px
+    }
+
+    pub(crate) fn parse_css(&mut self) -> Stylesheet {
+        let mut rules = Vec::new();
+        while !self.eof() {
+            rules.push(self.parse_rule())
+        }
+        Stylesheet { rules }
     }
 }
